@@ -11,7 +11,7 @@ interface Vm {
     function expectRevert(bytes calldata) external;
 }
 
-contract ContractTest is DSTest {
+contract UnstoppableTest is DSTest {
     UnstoppableLender unstoppableLender;
     DamnValuableToken damnValuableToken;
     ReceiverUnstoppable receiverUnstoppable;
