@@ -4,3 +4,6 @@
 [submodule "contracts/unstoppable/lib/lib/openzeppelin-contracts"]
 	path = contracts/unstoppable/lib/lib/openzeppelin-contracts
 	url = https://github.com/openzeppelin/openzeppelin-contracts
+[submodule "contracts/unstoppable/lib/openzeppelin-contracts"]
+	path = contracts/unstoppable/lib/openzeppelin-contracts
+	url = https://github.com/openzeppelin/openzeppelin-contracts
