@@ -23,8 +23,6 @@ contract ContractTest is DSTest {
         unstoppableLender = new UnstoppableLender(address(damnValuableToken));
         receiverUnstoppable = new ReceiverUnstoppable(address(unstoppableLender));
         
-        vm.deal(address(this), 1000000);
-
         damnValuableToken.approve(address(unstoppableLender), 1000000);
         unstoppableLender.depositTokens(1000000);
         
@@ -32,10 +30,8 @@ contract ContractTest is DSTest {
     }
 
     function testUnstoppable() public {
-        //damnValuableToken.approve(address(unstoppableLender), 1);
         damnValuableToken.transfer(address(unstoppableLender), 1);
-        damnValuableToken.approve(address(receiverUnstoppable), 10);
-        vm.expectRevert("");
+        vm.expectRevert("Pool balance should equal token balance");
         receiverUnstoppable.executeFlashLoan(10);
     }
 }
